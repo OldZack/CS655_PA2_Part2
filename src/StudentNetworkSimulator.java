@@ -197,6 +197,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
          * No changing resentbuffer as it will only be updated when a larger ack arrived.*/
         while (!temp_q.isEmpty()){
             if (ack_buffer_a.contains(temp_q.peek().getSeqnum())){
+                temp_q.poll();
                 continue;
             }
             toLayer3(0,q.peek());
@@ -238,6 +239,16 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         }
     }
 
+    protected void printresent(Queue<Packet> q){
+        Queue<Packet> cool = new LinkedList<>(q);
+        System.out.print("This is outside things: [");
+        while (!cool.isEmpty()){
+            System.out.print(cool.poll().getSeqnum());
+            System.out.print(", ");
+        }
+        System.out.println("]");
+    }
+
     // This routine will be called whenever a packet sent from the B-side
     // (i.e. as a result of a toLayer3() being done by a B-side procedure)
     // arrives at the A-side.  "packet" is the (possibly corrupted) packet
@@ -256,7 +267,10 @@ public class StudentNetworkSimulator extends NetworkSimulator {
 
 
         receivedPktNum += 1;
-        System.out.println("Packet received at A with ack number " + originAckNum);
+        System.out.print("Packet received at A: ");
+        printsack(originAckNum,temp);
+        System.out.println("The lastACK "+lastAckNum_a);
+        printresent(resentBuffer_a);
         if (packet.getSeqnum() == -1 && packet.getPayload().equals("") && ackNum >= 0 && ackNum < 2 * WindowSize) {
             // Stop timer when ack received.
             if (timerFlag_a == true) {
@@ -321,9 +335,18 @@ public class StudentNetworkSimulator extends NetworkSimulator {
 
     protected void b_send_ACK(int ack, int[] sack) {
         Packet p = new Packet(-1, ack, -1, sack);
-        System.out.println("Packet sent by B with ack number " + sack);
+        printsack(ack,sack);
         toLayer3(B, p);
         ackPktNum += 1;
+    }
+
+    protected void printsack(int ack,int[] sack){
+        System.out.println("ACK sent by B: " + ack);
+        System.out.print("SACK sent by B: ");
+        for (int i = 0; i < sack.length; i++) {
+            System.out.print(sack[i]);
+        }
+        System.out.println("");
     }
 
     // This routine will be called whenever a packet sent from the B-side
@@ -342,8 +365,10 @@ public class StudentNetworkSimulator extends NetworkSimulator {
             return;
         }
         System.out.println("Packet received at B with seq number " + p_seq + ", payload: " + msg);
+        System.out.println("wanted_B = "+wanted_B);
         if (p_seq == wanted_B) {
             toLayer5(packet.getPayload());
+            System.out.println("Uploading the packet "+ p_seq);
             deliveredPktNum++;
             wanted_B = (wanted_B + 1) % LimitSeqNo;
             /**Check if the added packet can make use of the buffered after pkts. Upload them*/
@@ -352,6 +377,9 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                     break;
                 }
                 toLayer5(buffer_B.get(0).getPayload());
+                deliveredPktNum++;
+                System.out.println("Uploading the packet+ "+buffer_B.get(0).getSeqnum());
+                System.out.println("");
                 wanted_B = (wanted_B + 1) % LimitSeqNo;
                 buffer_B.remove();
             }
@@ -387,16 +415,19 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                 if (p_seq <= end_window && p_seq > wanted_B) {
                     if (buffer_B.isEmpty()) {
                         buffer_B.add(packet);
+                        System.out.println(p_seq + " is added to buffer_B");
                     } else {
                         for (int i = 0; i < buffer_B.size(); i++) {
                             /**adding into the front of larger seq.*/
                             if (buffer_B.get(i).getSeqnum() > p_seq) {
                                 buffer_B.add(i, packet);
+                                System.out.println(p_seq + " is added to buffer_B");
                                 break;
                             } else {
                                 if (i == buffer_B.size() - 1) {
                                     if (buffer_B.get(i).getSeqnum() < p_seq) {
                                         buffer_B.addLast(packet);
+                                        System.out.println(p_seq + " is added to buffer_B");
                                         break;
                                     }
                                 }
@@ -408,6 +439,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                 if (p_seq <= end_window || p_seq > wanted_B) {
                     if (buffer_B.isEmpty()) {
                         buffer_B.add(packet);
+                        System.out.println(p_seq + " is added to buffer_B");
                     } else {
                         for (int i = 0; i < buffer_B.size(); i++) {
                             /**adding into the front of larger seq.*/
@@ -419,18 +451,23 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                             if (buffer_B.get(i).getSeqnum() > wanted_B) {
                                 if (buffer_B.get(i).getSeqnum() > temp_p) {
                                     buffer_B.add(i, packet);
+                                    System.out.println(p_seq + " is added to buffer_B");
                                     break;
                                 }
                                 if (i == buffer_B.size() - 1) {
                                     buffer_B.addLast(packet);
+                                    System.out.println(p_seq + " is added to buffer_B");
                                     break;
                                 }
                             } else if (buffer_B.get(i).getSeqnum() <= end_window) {
                                 if (buffer_B.get(i).getSeqnum() + 16 > temp_p) {
                                     buffer_B.add(i, packet);
+                                    System.out.println(p_seq + " is added to buffer_B");
+                                    break;
                                 }
                                 if (i == buffer_B.size() - 1) {
                                     buffer_B.addLast(packet);
+                                    System.out.println(p_seq + " is added to buffer_B");
                                     break;
                                 }
                             }
@@ -443,8 +480,9 @@ public class StudentNetworkSimulator extends NetworkSimulator {
             for (int i = 0; i < 5; i++) {
                 if (i < buffer_B.size()) {
                     SACK_B[i] = buffer_B.get(i).getSeqnum();
+                }else {
+                    SACK_B[i] = -1;
                 }
-                SACK_B[i] = -1;
             }
 
             b_send_ACK(wanted_B, SACK_B);
