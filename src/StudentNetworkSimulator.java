@@ -143,7 +143,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                                    double delay) {
         super(numMessages, loss, corrupt, avgDelay, trace, seed);
         WindowSize = winsize;
-        LimitSeqNo = winsize * 2; // set appropriately; assumes SR here!
+        LimitSeqNo = winsize + Packet.SACKSIZE + 1; // set appropriately; assumes SR here!
         RxmtInterval = delay;
 
         originPktNum = 0;
@@ -161,44 +161,35 @@ public class StudentNetworkSimulator extends NetworkSimulator {
 
     // This function copies the head packet from the queue,
     // sent it and update relevant values.
-    protected void sendPacket(Queue<Packet> q) {
-        if (q.isEmpty()) {
+    protected void sendPacket() {
+        if (unsentBuffer_a.isEmpty()) {
             return;
         }
-        System.out.println("Packet sent by A with seq number " + q.peek().getSeqnum() + ", payload: " + q.peek().getPayload());
-        toLayer3(0, q.peek());
+        System.out.println("Packet sent by A with seq number " + unsentBuffer_a.peek().getSeqnum() + ", payload: " + unsentBuffer_a.peek().getPayload());
+        toLayer3(0, unsentBuffer_a.peek());
 
         if (timerFlag_a == false) {
             startTimer(0, RxmtInterval);
             timerFlag_a = true;
         }
-        if (q.equals(unsentBuffer_a)) {
-            // Record the sent time to calculate RTT & communication time
-            sendTime.put(q.peek().getSeqnum(), getTime());
-            oriSendTime.put(q.peek().getSeqnum(), getTime());
-            resentBuffer_a.add(unsentBuffer_a.poll());
-            originPktNum += 1;
-        }
+        // Record the sent time to calculate RTT & communication time
+        sendTime.put(unsentBuffer_a.peek().getSeqnum(), getTime());
+        oriSendTime.put(unsentBuffer_a.peek().getSeqnum(), getTime());
+        resentBuffer_a.add(unsentBuffer_a.poll());
+        originPktNum += 1;
     }
 
-    protected void resendPacket(ArrayList<Packet> q) {
-        if (q.isEmpty()) {
+    protected void resendPacket() {
+        if (resentBuffer_a.isEmpty()) {
             return;
         }
 //        System.out.println("Packet sent by A with seq number " + q.get(0).getSeqnum() + ", payload: " + q.get(0).getPayload());
         /**If the resentbuffer(outstanding packets) has something not sacked from B, send it again.*/
-        ArrayList<Packet> xuan_seq = new ArrayList<>();
-        for (int i = 0; i < q.size(); i++) {
-            /**如果SACK里有resent的东西，那就把它从resent里去了,并且bump进来一个sent的东西*/
-            if (ack_buffer_a.contains(q.get(i).getSeqnum())){
-                xuan_seq.add(q.get(i));
+        for (int i = 0; i < resentBuffer_a.size(); i++) {
+            if (!ack_buffer_a.contains(resentBuffer_a.get(i).getSeqnum())) {
+                toLayer3(0, resentBuffer_a.get(i));
             }
         }
-        for (Packet j:xuan_seq) {
-            q.remove(j);
-        }
-        while ()
-
 
         /**发送多个pkt要怎么timer啊？*/
         if (timerFlag_a == false) {
@@ -222,7 +213,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
 
         // Check if the packet can be sent right away.
         if (resentBuffer_a.size() < WindowSize) {
-            sendPacket(unsentBuffer_a);
+            sendPacket();
         }
         // Increase the next sequence number.
         nextSeqNum_a += 1;
@@ -250,17 +241,16 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         int originAckNum = packet.getAcknum();
         int ackNum = originAckNum;
         int[] temp = packet.getsack();
-        /**Everytime A totally accepts a sack from B*/
+        // Allocate acks in sack to local ack buffer.
         for (int i = 0; i < temp.length; i++) {
+            if (temp[i] >=0 && temp[i] < 2* WindowSize)
             ack_buffer_a.add(temp[i]);
         }
-
 
         receivedPktNum += 1;
         System.out.print("Packet received at A: ");
         printsack(originAckNum,temp);
         System.out.println("The lastACK "+lastAckNum_a);
-        printresent(resentBuffer_a);
         if (packet.getSeqnum() == -1 && packet.getPayload().equals("") && ackNum >= 0 && ackNum < 2 * WindowSize) {
             // Stop timer when ack received.
             if (timerFlag_a == true) {
@@ -268,7 +258,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                 timerFlag_a = false;
             }
             if (ackNum == lastAckNum_a) {
-                resendPacket(resentBuffer_a);
+                resendPacket();
             } else {
                 if (ackNum < lastAckNum_a) {
                     ackNum += 2 * WindowSize;

@@ -1,5 +1,6 @@
 public class Packet
 {
+    public static int SACKSIZE = 5;
     private int seqnum;
     private int acknum;
     private int checksum;
@@ -20,7 +21,7 @@ public class Packet
         seqnum = seq;
         acknum = ack;
         checksum = check;
-        sack = new int[5];
+        sack = new int[SACKSIZE];
         if (newPayload == null)
         {
             payload = "";
