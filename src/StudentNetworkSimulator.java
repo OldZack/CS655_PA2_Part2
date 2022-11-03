@@ -121,16 +121,16 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     private Queue<Packet> unsentBuffer_a;
     // Stores the data that is sent but might require resent.
     private Queue<Packet> resentBuffer_a;
+    private LinkedList<Integer> ack_buffer_a;
     private int nextSeqNum_a;
     private int lastAckNum_a;
     private boolean timerFlag_a;
-    private int currSeqNum_a;
 
     // Variables for the receiver (B)
     private LinkedList<Packet> buffer_B;
     //window notation
     private int wanted_B;
-    private int head_B;
+
     private int[] SACK_B;
 
 
@@ -154,7 +154,6 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         ackPktNum = 0;
         corruptPktNum = 0;
         receivedPktNum = 0;
-        currSeqNum_a = 0;
 
         RTTList = new ArrayList<Double>();
         CTList = new ArrayList<Double>();
@@ -188,6 +187,35 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         }
     }
 
+    protected void resendPacket(Queue<Packet> q) {
+        if (q.isEmpty()) {
+            return;
+        }
+        System.out.println("Packet sent by A with seq number " + q.peek().getSeqnum() + ", payload: " + q.peek().getPayload());
+        Queue<Packet> temp_q = new LinkedList<>(q);
+        /**If the resentbuffer(outstanding packets) has something not sacked from B, send it again.
+         * No changing resentbuffer as it will only be updated when a larger ack arrived.*/
+        while (!temp_q.isEmpty()){
+            if (ack_buffer_a.contains(temp_q.peek().getSeqnum())){
+                continue;
+            }
+            toLayer3(0,q.peek());
+
+            /**检查一下这个在多次发送时如何修改*/
+            sendTime.remove(q.peek().getSeqnum());
+            retransPktNum += 1;
+            temp_q.poll();
+
+        }
+        /**发送多个pkt要怎么timer啊？*/
+        if (timerFlag_a == false) {
+            startTimer(0, RxmtInterval);
+            timerFlag_a = true;
+        }
+        // Remove the record for RTT since the pkt is retransmitted.
+
+    }
+
 
     // This routine will be called whenever the upper layer at the sender [A]
     // has a message to send.  It is the job of your protocol to insure that
@@ -205,7 +233,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         }
         // Increase the next sequence number.
         nextSeqNum_a += 1;
-        if (nextSeqNum_a == 2 * WindowSize) {
+        if (nextSeqNum_a == LimitSeqNo) {
             nextSeqNum_a = 0;
         }
     }
@@ -215,9 +243,16 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     // arrives at the A-side.  "packet" is the (possibly corrupted) packet
     // sent from the B-side.
     protected void aInput(Packet packet) {
-        /**需要改成array模式*/
+
         int originAckNum = packet.getAcknum();
         int ackNum = originAckNum;
+        int[] temp = packet.getsack();
+        LinkedList<Integer> something = new LinkedList<>();
+        /**Everytime A totally accepts a sack from B*/
+        for (int i = 0; i < temp.length; i++) {
+            something.add(temp[i]);
+        }
+        ack_buffer_a = something;
 
 
         receivedPktNum += 1;
@@ -229,7 +264,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                 timerFlag_a = false;
             }
             if (ackNum == lastAckNum_a) {
-                sendPacket(resentBuffer_a);
+                resendPacket(resentBuffer_a);
             } else {
                 if (ackNum < lastAckNum_a) {
                     ackNum += 2 * WindowSize;
@@ -239,6 +274,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                     RTTList.add(getTime() - sendTime.get(originAckNum - 1));
                 }
 
+                /**收到了新的ack，更新resent并且发送新的unsent*/
                 for (int i = 0; i < (ackNum - lastAckNum_a); i++) {
                     resentBuffer_a.poll();
                     // use reception time of the ack to calculate CT for all packets corresponded by this ack.
@@ -263,7 +299,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
             stopTimer(0);
             timerFlag_a = false;
         }
-        sendPacket(resentBuffer_a);
+        resendPacket(resentBuffer_a);
     }
 
     // This routine will be called once, before any of your other A-side
@@ -275,12 +311,17 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         resentBuffer_a = new LinkedList<Packet>();
         nextSeqNum_a = 0;
         lastAckNum_a = 0;
+
+        ack_buffer_a = new LinkedList<>();
+        for (int i = 0; i < 5; i++) {
+            ack_buffer_a.add(-1);
+        }
     }
 
 
     protected void b_send_ACK(int ack, int[] sack) {
         Packet p = new Packet(-1, ack, -1, sack);
-        System.out.println("Packet sent by B with ack number " + sack.toString());
+        System.out.println("Packet sent by B with ack number " + sack);
         toLayer3(B, p);
         ackPktNum += 1;
     }
@@ -303,6 +344,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         System.out.println("Packet received at B with seq number " + p_seq + ", payload: " + msg);
         if (p_seq == wanted_B) {
             toLayer5(packet.getPayload());
+            deliveredPktNum++;
             wanted_B = (wanted_B + 1) % LimitSeqNo;
             /**Check if the added packet can make use of the buffered after pkts. Upload them*/
             while (buffer_B.size() != 0) {
@@ -416,7 +458,6 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     protected void bInit() {
         buffer_B = new LinkedList<>();
         wanted_B = 0;
-        head_B = 0;
         SACK_B = new int[5];
         for (int i = 0; i < 5; i++) {
             SACK_B[i] = -1;
