@@ -123,10 +123,13 @@ public class StudentNetworkSimulator extends NetworkSimulator
     private int currSeqNum_a;
 
     // Variables for the receiver (B)
-    private HashMap<Integer,Packet> buffer_B;
+    private Queue<Packet> buffer_B;
     //window notation
     private int wanted_B;
-    private int max_B;
+    private int head_B;
+    private int[] SACK_B;
+
+
 
     // This is the constructor.  Don't touch!
     public StudentNetworkSimulator(int numMessages,
@@ -204,8 +207,12 @@ public class StudentNetworkSimulator extends NetworkSimulator
     // sent from the B-side.
     protected void aInput(Packet packet)
     {
+        /**需要改成array模式*/
         int originAckNum = packet.getAcknum();
         int ackNum = originAckNum;
+
+
+
         receivedPktNum += 1;
         System.out.println("Packet received at A with ack number " + ackNum);
         if (packet.getSeqnum() == -1 && packet.getPayload().equals("") && ackNum >= 0 && ackNum < 2*WindowSize){
@@ -262,9 +269,9 @@ public class StudentNetworkSimulator extends NetworkSimulator
     }
 
 
-    protected void b_send_ACK(int ack){
-        Packet p = new Packet(-1,ack,-1);
-        System.out.println("Packet sent by B with ack number " + ack);
+    protected void b_send_ACK(int ack, int[] sack){
+        Packet p = new Packet(-1,ack,-1,sack);
+        System.out.println("Packet sent by B with ack number " + sack.toString());
         toLayer3(B,p);
         ackPktNum += 1;
     }
@@ -281,49 +288,32 @@ public class StudentNetworkSimulator extends NetworkSimulator
         int p_seq = packet.getSeqnum();
         int checksum = msg.hashCode();
         if (packet.getChecksum() != checksum){
-            System.out.println("Packet from A is corrupted!");
-            corruptPktNum += 1;
+            System.out.println("corrupted");
+            corruptPktNum++;
             return;
         }
-        System.out.println("Packet received at B with seq number " + p_seq);
         if (p_seq == wanted_B){
-            buffer_B.put(wanted_B,packet);
-            /**When current_B packet is received*/
-            while(buffer_B.get(wanted_B) != null){
-                toLayer5(buffer_B.get(wanted_B).getPayload());
-
-                deliveredPktNum += 1;
-
-                buffer_B.remove(wanted_B);
-                max_B = (max_B+1)%LimitSeqNo;
-                wanted_B = (wanted_B+1)%LimitSeqNo;
+            toLayer5(packet.getPayload());
+            if (buffer_B.size()<5){
+                buffer_B.add(packet);
+                int temp_tail = p_seq;
+                SACK_B[temp_tail] = p_seq;
+            } else{
+                buffer_B.add(packet);
+                buffer_B.poll();
+                head_B = buffer_B.peek().getSeqnum();
+                for (int i = 0; i < 5; i++) {
+                    int temp = (head_B+i)%LimitSeqNo;
+                    SACK_B[i] = temp;
+                }
             }
-            b_send_ACK(wanted_B);
+            /**Make sure what the limit will be for A*/
+            wanted_B = (wanted_B+1)%LimitSeqNo;
+            b_send_ACK(wanted_B, SACK_B);
         }else {
-            for (int key:buffer_B.keySet()) {
-                if (p_seq==key){
-                    System.out.println("duplicate");
-                    b_send_ACK(wanted_B);
-                    return;
-                }
-            }
-            if (max_B < wanted_B){
-                if (p_seq <= max_B || p_seq > wanted_B){
-                    buffer_B.put(p_seq,packet);
-                }else {
-                    System.out.println("sent duplicate");
-                    b_send_ACK(wanted_B);
-                }
-            }
-            if (max_B > wanted_B){
-                if (p_seq > wanted_B && p_seq <=max_B){
-                    buffer_B.put(p_seq,packet);
-                }else {
-                    System.out.println("sent duplicate");
-                    b_send_ACK(wanted_B);
-                }
-            }
+            b_send_ACK(wanted_B, SACK_B);
         }
+
 
     }
 
@@ -333,9 +323,13 @@ public class StudentNetworkSimulator extends NetworkSimulator
     // of entity B).
     protected void bInit()
     {
-        buffer_B = new HashMap<>();
+        buffer_B = new LinkedList<>();
         wanted_B = 0;
-        max_B = (wanted_B+WindowSize) % LimitSeqNo;
+        head_B = 0;
+        SACK_B = new int[5];
+        for (int i = 0; i < 5; i++) {
+            SACK_B[i] = -1;
+        }
     }
 
     // Use to print final statistics
