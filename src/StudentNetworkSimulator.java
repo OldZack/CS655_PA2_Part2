@@ -333,6 +333,14 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         System.out.println("");
     }
 
+    protected void printArray(ArrayList<Integer> array){
+        System.out.print("Sorted sack in B: ");
+        for (int i = 0; i < array.size(); i++) {
+            System.out.print(array.get(i));
+        }
+        System.out.println("");
+    }
+
     // This routine will be called whenever a packet sent from the B-side
     // (i.e. as a result of a toLayer3() being done by an A-side procedure)
     // arrives at the B-side.  "packet" is the (possibly corrupted) packet
@@ -355,49 +363,70 @@ public class StudentNetworkSimulator extends NetworkSimulator {
             deliveredPktNum++;
             wanted_B = (wanted_B + 1) % LimitSeqNo;
             ArrayList<Integer> seq_number_sort = new ArrayList<>(buffer_SACK);
-            if (end_window > wanted_B){
-                seq_number_sort.sort(Comparator.naturalOrder());
-            }else {
-                for (int i = 0; i < seq_number_sort.size(); i++) {
-                    if(seq_number_sort.get(i) < end_window){
-                        seq_number_sort.set(i,seq_number_sort.get(i)+LimitSeqNo);
-                    }
+            if (buffer_SACK.isEmpty()){
+                for (int i = 0; i < 5; i++) {
+                    SACK_B[i] = -1;
                 }
-                seq_number_sort.sort(Comparator.naturalOrder());
-                for (int i = 0; i < seq_number_sort.size(); i++) {
-                    if (seq_number_sort.get(i) >= LimitSeqNo){
-                        seq_number_sort.set(i,seq_number_sort.get(i)%LimitSeqNo);
-                    }
-                }
-                while (seq_number_sort.size() != 0) {
-                    int seq = seq_number_sort.get(0);
-                    if (seq != wanted_B){
-                        break;
-                    }
-                    toLayer5(seq_to_packet.get(seq).getPayload());
-                    deliveredPktNum++;
-                    wanted_B = (wanted_B+1)%LimitSeqNo;
-                    seq_number_sort.remove(0);
-                }
-                for (int q: seq_number_sort) {
-                    if (!buffer_SACK.contains(q)){
-                        continue;
-                    }
-                    buffer_SACK.remove((Object)q);
-                }
+                b_send_ACK(wanted_B,SACK_B);
+                return;
+            }else{
+                if (end_window > wanted_B){
+                    seq_number_sort.sort(Comparator.naturalOrder());
+                    printArray(seq_number_sort);
+                    while (seq_number_sort.size() != 0) {
+                        int seq = seq_number_sort.get(0);
+                        if (seq > wanted_B){
+                            break;
+                        }else if (seq < wanted_B){
+                            int result = seq_number_sort.remove(0);
+                            buffer_SACK.remove((Object)result);
+                        } else {
+                            toLayer5(seq_to_packet.get(seq).getPayload());
+                            deliveredPktNum++;
+                            wanted_B = (wanted_B+1)%LimitSeqNo;
+                            int result = seq_number_sort.remove(0);
+                            buffer_SACK.remove((Object)result);
+                        }
 
+                    }
+                }else {
+                    int temp_wanted = wanted_B;
+                    for (int i = 0; i < seq_number_sort.size(); i++) {
+                        if(seq_number_sort.get(i) < end_window){
+                            seq_number_sort.set(i,seq_number_sort.get(i)+LimitSeqNo);
+                        }
+                    }
+                    seq_number_sort.sort(Comparator.naturalOrder());
+//                    for (int i = 0; i < seq_number_sort.size(); i++) {
+//                        if (seq_number_sort.get(i) >= LimitSeqNo){
+//                            seq_number_sort.set(i,seq_number_sort.get(i)%LimitSeqNo);
+//                        }
+//                    }
+                    printArray(seq_number_sort);
+                    while (seq_number_sort.size() != 0) {
+                        int seq = seq_number_sort.get(0);
+                        if (seq > temp_wanted){
+                            break;
+                        }else if (seq < temp_wanted){
+                            int result = seq_number_sort.remove(0);
+                            buffer_SACK.remove((Object)(result%LimitSeqNo));
+                        }
+                        else{
+                            toLayer5(seq_to_packet.get(seq).getPayload());
+                            deliveredPktNum++;
+                            temp_wanted = temp_wanted+1;
+                            int result = seq_number_sort.remove(0);
+                            buffer_SACK.remove((Object)(result%LimitSeqNo));
+                        }
+
+                    }
+                    wanted_B = temp_wanted%LimitSeqNo;
+
+                }
             }
-//            /**This time remove one sack, also only remove one in map*/
-//            for (int seq : seq_to_packet.keySet()) {
-//                if (buffer_SACK.contains(seq)){
-//                    continue;
-//                }
-//                seq_to_packet.remove(seq);
-//            }
-
 
             /**Reset the cleared sack buffer to send back*/
-            if (buffer_SACK.size() == 0) {
+            if (buffer_SACK.isEmpty()) {
                 for (int i = 0; i < 5; i++) {
                     SACK_B[i] = -1;
                 }
@@ -413,20 +442,12 @@ public class StudentNetworkSimulator extends NetworkSimulator {
             }
             b_send_ACK(wanted_B, SACK_B);
         } else {
-//            /**The packet is not wanted, changing the SACK*/
-//            for (int i = 0; i < buffer_B.size(); i++) {
-//                /**Duplicated in SACK*/
-//                if (p_seq == buffer_B.get(i).getSeqnum()) {
-//                    b_send_ACK(wanted_B, SACK_B);
-//                    return;
-//                }
-//            }
             /**If the p_seq is inside the window of B, add to sack and sort*/
             int end_window = (wanted_B + WindowSize) % LimitSeqNo;
 
             if (end_window > wanted_B) { /**Only have in-order between sequences.*/
                 if (p_seq <= end_window && p_seq > wanted_B) {
-                    if (buffer_SACK.isEmpty()) {
+                    if (buffer_SACK.size()<5) {
                         buffer_SACK.add(packet.getSeqnum());
                         seq_to_packet.put(p_seq,packet);
                         System.out.println(p_seq + " is added to buffer_B");
@@ -447,7 +468,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                 }
             } else {
                 if (p_seq <= end_window || p_seq > wanted_B) {
-                    if (buffer_SACK.isEmpty()) {
+                    if (buffer_SACK.size()<5) {
                         buffer_SACK.add(packet.getSeqnum());
                         seq_to_packet.put(p_seq,packet);
                         System.out.println(p_seq + " is added to buffer_B");
@@ -456,47 +477,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                         buffer_SACK.add(buffer_SACK.size(),p_seq);
                         System.out.println(p_seq + " is added to buffer_SACK");
                         seq_to_packet.put(p_seq,packet);
-//                        /**This time remove one sack, also only remove one in map*/
-//                        for (int seq : seq_to_packet.keySet()) {
-//                            if (buffer_SACK.contains(seq)){
-//                                continue;
-//                            }
-//                            seq_to_packet.remove(seq);
-//                            break;
-//                        }
 
-//
-//                        for (int i = 0; i < buffer_SACK.size(); i++) {
-//                            /**adding into the front of larger seq.*/
-//                            int temp_p = p_seq;
-//                            if (p_seq <= end_window) {
-//                                temp_p = p_seq + LimitSeqNo;
-//                            }
-//                            /**Use 17 to denote 1 in the two-side window*/
-//                            if (buffer_SACK.get(i) > wanted_B) {
-//                                if (buffer_B.get(i).getSeqnum() > temp_p) {
-//                                    buffer_B.add(i, packet);
-//                                    System.out.println(p_seq + " is added to buffer_B");
-//                                    break;
-//                                }
-//                                if (i == buffer_B.size() - 1) {
-//                                    buffer_B.addLast(packet);
-//                                    System.out.println(p_seq + " is added to buffer_B");
-//                                    break;
-//                                }
-//                            } else if (buffer_B.get(i).getSeqnum() <= end_window) {
-//                                if (buffer_B.get(i).getSeqnum() + 16 > temp_p) {
-//                                    buffer_B.add(i, packet);
-//                                    System.out.println(p_seq + " is added to buffer_B");
-//                                    break;
-//                                }
-//                                if (i == buffer_B.size() - 1) {
-//                                    buffer_B.addLast(packet);
-//                                    System.out.println(p_seq + " is added to buffer_B");
-//                                    break;
-//                                }
-//                            }
-//                        }
                     }
 
                 }
