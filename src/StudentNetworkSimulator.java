@@ -422,6 +422,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                             if (buffer_B.get(i).getSeqnum() > p_seq) {
                                 buffer_B.add(i, packet);
                                 System.out.println(p_seq + " is added to buffer_B");
+
                                 break;
                             } else {
                                 if (i == buffer_B.size() - 1) {
