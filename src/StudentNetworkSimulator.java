@@ -197,7 +197,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         for (Packet j:xuan_seq) {
             q.remove(j);
         }
-        while ()
+
 
 
         /**发送多个pkt要怎么timer啊？*/
@@ -367,7 +367,6 @@ public class StudentNetworkSimulator extends NetworkSimulator {
             if (end_window > wanted_B){
                 seq_number_sort.sort(Comparator.naturalOrder());
             }else {
-                /**add 0 to 16 to be bigger than 15*/
                 for (int i = 0; i < seq_number_sort.size(); i++) {
                     if(seq_number_sort.get(i) < end_window){
                         seq_number_sort.set(i,seq_number_sort.get(i)+LimitSeqNo);
