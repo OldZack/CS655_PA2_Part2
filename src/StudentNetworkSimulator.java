@@ -371,7 +371,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                             /**adding into the front of larger seq.*/
                             int temp_p = p_seq;
                             if (p_seq <= end_window) {
-                                temp_p = p_seq + 16;
+                                temp_p = p_seq + LimitSeqNo;
                             }
                             /**Use 17 to denote 1 in the two-side window*/
                             if (buffer_B.get(i).getSeqnum() > wanted_B) {
