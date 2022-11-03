@@ -97,7 +97,6 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     private int deliveredPktNum;
     private int ackPktNum;
     private int corruptPktNum;
-    private int receivedPktNum;
 
     // Calculating RTT variables
     ArrayList<Double> RTTList;
@@ -151,7 +150,6 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         deliveredPktNum = 0;
         ackPktNum = 0;
         corruptPktNum = 0;
-        receivedPktNum = 0;
 
         RTTList = new ArrayList<Double>();
         CTList = new ArrayList<Double>();
@@ -259,7 +257,6 @@ public class StudentNetworkSimulator extends NetworkSimulator {
             }
         }
 
-        receivedPktNum += 1;
         System.out.println("Packet received at A with ack number " + originAckNum);
         // Stop timer when ack received.
         if (timerFlag_a == true) {
@@ -347,7 +344,6 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     // sent from the A-side.
     //上传的+1
     protected void bInput(Packet packet) {
-        receivedPktNum += 1;
         String msg = packet.getPayload();
         int p_seq = packet.getSeqnum();
         int checksum = msg.hashCode();
