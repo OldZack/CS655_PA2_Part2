@@ -1,3 +1,4 @@
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Queue;
@@ -102,8 +103,13 @@ public class StudentNetworkSimulator extends NetworkSimulator
     private int corruptPktNum;
     private int receivedPktNum;
 
+    // Calculating RTT variables
+    ArrayList<Double> RTTList;
+    private HashMap<Integer, Double> sendTime;
 
-
+    // Calculating communication time variables
+    ArrayList<Double> CTList;
+    private HashMap<Integer, Double> oriSendTime;
 
 
 
@@ -153,6 +159,11 @@ public class StudentNetworkSimulator extends NetworkSimulator
         corruptPktNum = 0;
         receivedPktNum = 0;
         currSeqNum_a = 0;
+
+        RTTList = new ArrayList<Double>();
+        CTList = new ArrayList<Double>();
+        sendTime = new HashMap<Integer, Double>();
+        oriSendTime = new HashMap<Integer, Double>();
     }
 
     // This function copies the head packet from the queue,
@@ -161,17 +172,23 @@ public class StudentNetworkSimulator extends NetworkSimulator
         if (q.isEmpty()){
             return;
         }
-        System.out.println("Packet sent by A with seq number " + q.peek().getSeqnum());
+        System.out.println("Packet sent by A with seq number " + q.peek().getSeqnum() + ", payload: " + q.peek().getPayload());
         toLayer3(0, q.peek());
+
         if (timerFlag_a == false){
             startTimer(0, RxmtInterval);
             timerFlag_a = true;
         }
         if (q.equals(unsentBuffer_a)){
+            // Record the sent time to calculate RTT & communication time
+            sendTime.put(q.peek().getSeqnum(), getTime());
+            oriSendTime.put(q.peek().getSeqnum(), getTime());
             resentBuffer_a.add(unsentBuffer_a.poll());
             originPktNum += 1;
         }
         else{
+            // Remove the record for RTT since the pkt is retransmitted.
+            sendTime.remove(q.peek().getSeqnum());
             retransPktNum += 1;
         }
     }
@@ -187,8 +204,6 @@ public class StudentNetworkSimulator extends NetworkSimulator
         // Generate packet
         Packet pkt = new Packet(nextSeqNum_a, -1, message.getData().hashCode(), message.getData());
         unsentBuffer_a.add(pkt);
-        System.out.println(resentBuffer_a);
-        System.out.println(unsentBuffer_a);
 
         // Check if the packet can be sent right away.
         if (resentBuffer_a.size() < WindowSize){
@@ -214,7 +229,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
 
 
         receivedPktNum += 1;
-        System.out.println("Packet received at A with ack number " + ackNum);
+        System.out.println("Packet received at A with ack number " + originAckNum);
         if (packet.getSeqnum() == -1 && packet.getPayload().equals("") && ackNum >= 0 && ackNum < 2*WindowSize){
             // Stop timer when ack received.
             if (timerFlag_a == true){
@@ -227,10 +242,16 @@ public class StudentNetworkSimulator extends NetworkSimulator
             else {
                 if (ackNum < lastAckNum_a) {
                     ackNum += 2*WindowSize;
-                    System.out.println("Here: " + ackNum + " "+  lastAckNum_a);
                 }
+                // use reception time of the ack to calculate RTT (if the sent time is recorded in map)
+                if (sendTime.containsKey(originAckNum-1)){
+                    RTTList.add(getTime()-sendTime.get(originAckNum-1));
+                }
+
                 for (int i = 0; i < (ackNum-lastAckNum_a); i++){
                     resentBuffer_a.poll();
+                    // use reception time of the ack to calculate CT for all packets corresponded by this ack.
+                    CTList.add(getTime()-oriSendTime.get(((originAckNum-1-i)%(2*WindowSize)+(2*WindowSize))%(2*WindowSize)));
                     sendPacket(unsentBuffer_a);
                 }
             }
@@ -248,7 +269,7 @@ public class StudentNetworkSimulator extends NetworkSimulator
     // for how the timer is started and stopped.
     protected void aTimerInterrupt()
     {
-        System.out.println("Timeout, resend the next missing packet.");
+        System.out.println("Timeout, A resend the next missing packet.");
         if (timerFlag_a == true){
             stopTimer(0);
             timerFlag_a = false;
@@ -288,10 +309,11 @@ public class StudentNetworkSimulator extends NetworkSimulator
         int p_seq = packet.getSeqnum();
         int checksum = msg.hashCode();
         if (packet.getChecksum() != checksum){
-            System.out.println("corrupted");
-            corruptPktNum++;
+            System.out.println("Checksum failed, packet from A is corrupted!");
+            corruptPktNum += 1;
             return;
         }
+        System.out.println("Packet received at B with seq number " + p_seq + ", payload: " + msg);
         if (p_seq == wanted_B){
             toLayer5(packet.getPayload());
             if (buffer_B.size()<5){
@@ -335,6 +357,16 @@ public class StudentNetworkSimulator extends NetworkSimulator
     // Use to print final statistics
     protected void Simulation_done()
     {
+        // Calculate total RTT & communication time.
+        Double totalRTT = Double.valueOf(0);
+        for (int i = 0; i < RTTList.size(); i++){
+            totalRTT += RTTList.get(i);
+        }
+
+        Double totalCT = Double.valueOf(0);
+        for (int i = 0; i < CTList.size(); i++){
+            totalCT += CTList.get(i);
+        }
         // TO PRINT THE STATISTICS, FILL IN THE DETAILS BY PUTTING VARIBALE NAMES. DO NOT CHANGE THE FORMAT OF PRINTED OUTPUT
         System.out.println("\n\n===============STATISTICS=======================");
         System.out.println("Number of original packets transmitted by A:" + originPktNum);
@@ -342,10 +374,10 @@ public class StudentNetworkSimulator extends NetworkSimulator
         System.out.println("Number of data packets delivered to layer 5 at B:" + deliveredPktNum);
         System.out.println("Number of ACK packets sent by B:" + ackPktNum);
         System.out.println("Number of corrupted packets:" + corruptPktNum);
-        System.out.println("Ratio of lost packets:" + (1.0-((double)receivedPktNum/((double)originPktNum+(double)retransPktNum+(double)ackPktNum))) );
-        System.out.println("Ratio of corrupted packets:" + (double)corruptPktNum/((double)originPktNum+(double)retransPktNum+(double)ackPktNum));
-        System.out.println("Average RTT:" + "<YourVariableHere>");
-        System.out.println("Average communication time:" + "<YourVariableHere>");
+        System.out.println("Ratio of lost packets:" + ((double)retransPktNum - (double)corruptPktNum)/((double)originPktNum+(double)retransPktNum+(double)ackPktNum));
+        System.out.println("Ratio of corrupted packets:" + (double)corruptPktNum/((double)originPktNum+(double)retransPktNum+(double)ackPktNum-(double)retransPktNum + (double)corruptPktNum));
+        System.out.println("Average RTT:" + totalRTT/RTTList.size());
+        System.out.println("Average communication time:" + totalCT/CTList.size());
         System.out.println("==================================================");
 
         // PRINT YOUR OWN STATISTIC HERE TO CHECK THE CORRECTNESS OF YOUR PROGRAM
