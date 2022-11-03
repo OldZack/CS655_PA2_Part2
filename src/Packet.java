@@ -21,7 +21,7 @@ public class Packet
         seqnum = seq;
         acknum = ack;
         checksum = check;
-        sack = new int[SACKSIZE];
+        sack = null;
         if (newPayload == null)
         {
             payload = "";
