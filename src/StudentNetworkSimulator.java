@@ -389,15 +389,10 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                     int temp_wanted = wanted_B;
                     for (int i = 0; i < seq_number_sort.size(); i++) {
                         if(seq_number_sort.get(i) < end_window){
-                            seq_number_sort.set(i,seq_number_sort.get(i)+LimitSeqNo-1);
+                            seq_number_sort.set(i,seq_number_sort.get(i)+LimitSeqNo);
                         }
                     }
                     seq_number_sort.sort(Comparator.naturalOrder());
-//                    for (int i = 0; i < seq_number_sort.size(); i++) {
-//                        if (seq_number_sort.get(i) >= LimitSeqNo){
-//                            seq_number_sort.set(i,seq_number_sort.get(i)%LimitSeqNo);
-//                        }
-//                    }
                     printArray(seq_number_sort);
                     while (seq_number_sort.size() != 0) {
                         int seq = seq_number_sort.get(0);
@@ -408,14 +403,14 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                             buffer_SACK.remove((Object)(result%LimitSeqNo));
                         }
                         else{
-                            if (seq_to_packet.get(seq) == null){
+                            if (seq_to_packet.get(seq%LimitSeqNo) == null){
                                 for (int key:seq_to_packet.keySet()) {
                                     System.out.print(key);
                                     System.out.println(" and the value" + seq_to_packet.get(key));
                                 }
-                                System.out.println(seq);
+                                System.out.println(seq%LimitSeqNo);
                             }
-                            toLayer5(seq_to_packet.get(seq).getPayload());
+                            toLayer5(seq_to_packet.get(seq%LimitSeqNo).getPayload());
                             deliveredPktNum++;
                             temp_wanted = temp_wanted+1;
                             int result = seq_number_sort.remove(0);
