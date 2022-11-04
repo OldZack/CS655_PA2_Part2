@@ -189,12 +189,14 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         }
 
         // If the resentbuffer(outstanding packets) has something not sacked from B, send it again.
+        if (resentBuffer_a.size() >= 1){
+            // Remove all start times when a packet gets recent.
+            sendTime.clear();
+        }
         for (int i = 0; i < resentBuffer_a.size(); i++) {
             if (!ack_buffer_a.contains(resentBuffer_a.get(i).getSeqnum())) {
                 System.out.println("Packet sent by A with seq number " + resentBuffer_a.get(i).getSeqnum() + ", payload: " + resentBuffer_a.get(i).getPayload());
                 toLayer3(0, resentBuffer_a.get(i));
-                // Remove the record for RTT since the pkt is retransmitted.
-                sendTime.remove(resentBuffer_a.get(i).getSeqnum());
                 retransPktNum += 1;
             }
         }
