@@ -87,9 +87,9 @@ public class StudentNetworkSimulator extends NetworkSimulator {
      */
 
     public static final int FirstSeqNo = 0;
-    private int WindowSize;
-    private double RxmtInterval;
-    private int LimitSeqNo;
+    private final int WindowSize;
+    private final double RxmtInterval;
+    private final int LimitSeqNo;
 
     // Statistic Variables
     private int originPktNum;
@@ -100,11 +100,11 @@ public class StudentNetworkSimulator extends NetworkSimulator {
 
     // Calculating RTT variables
     ArrayList<Double> RTTList;
-    private HashMap<Integer, Double> sendTime;
+    private final HashMap<Integer, Double> sendTime;
 
     // Calculating communication time variables
     ArrayList<Double> CTList;
-    private HashMap<Integer, Double> oriSendTime;
+    private final HashMap<Integer, Double> oriSendTime;
 
 
     // Add any necessary class variables here.  Remember, you cannot use
@@ -124,7 +124,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
 
     // Variables for the receiver (B)
     private ArrayList<Integer> buffer_SACK;
-    private HashMap<Integer,Packet> seq_to_packet;
+    private HashMap<Integer, Packet> seq_to_packet;
     //window notation
     private int wanted_B;
 
@@ -167,7 +167,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         toLayer3(0, unsentBuffer_a.peek());
 
         // Start timer
-        if (timerFlag_a == false) {
+        if (!timerFlag_a) {
             startTimer(0, RxmtInterval);
             timerFlag_a = true;
         }
@@ -183,7 +183,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
             return;
         }
 
-        if (timerFlag_a == false) {
+        if (!timerFlag_a) {
             startTimer(0, RxmtInterval);
             timerFlag_a = true;
         }
@@ -224,10 +224,13 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         }
     }
 
-    protected void printresent(Queue<Packet> q){
+    /**
+     * printout the resentbuffer for debug
+     */
+    protected void printresent(Queue<Packet> q) {
         Queue<Packet> cool = new LinkedList<>(q);
         System.out.print("This is outside things: [");
-        while (!cool.isEmpty()){
+        while (!cool.isEmpty()) {
             System.out.print(cool.poll().getSeqnum());
             System.out.print(", ");
         }
@@ -254,22 +257,21 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         ack_buffer_a.clear();
         // Allocate acks in sack to local ack buffer.
         for (int i = 0; i < temp.length; i++) {
-            if (temp[i] >=0 && temp[i] < LimitSeqNo){
+            if (temp[i] >= 0 && temp[i] < LimitSeqNo) {
                 ack_buffer_a.add(temp[i]);
             }
         }
 
         System.out.println("Packet received at A with ack number " + originAckNum);
         // Stop timer when ack received.
-        if (timerFlag_a == true) {
+        if (timerFlag_a) {
             stopTimer(0);
             timerFlag_a = false;
         }
         if (ackNum == lastAckNum_a) {
             System.out.println("Duplicate ack received, resend next missing packets.");
             resendPacket();
-        }
-        else {
+        } else {
             if (ackNum < lastAckNum_a) {
                 ackNum += LimitSeqNo;
             }
@@ -295,7 +297,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     // for how the timer is started and stopped.
     protected void aTimerInterrupt() {
         System.out.println("Timeout, resend missing packets.");
-        if (timerFlag_a == true) {
+        if (timerFlag_a) {
             stopTimer(0);
             timerFlag_a = false;
         }
@@ -315,112 +317,117 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         ack_buffer_a = new ArrayList<>();
     }
 
-
+    /**
+     * Convenient method to send back ACK to A
+     */
     protected void b_send_ACK(int ack, int[] sack) {
         Packet p = new Packet(-1, ack, -1, sack);
-        printsack(ack,sack);
+//        printsack(ack,sack);
         toLayer3(B, p);
         ackPktNum += 1;
     }
 
-    protected void printsack(int ack,int[] sack){
+    /**
+     * Easy way to debug sack
+     */
+    protected void printsack(int ack, int[] sack) {
         System.out.println("ACK sent by B: " + ack);
         System.out.print("SACK sent by B: ");
         for (int i = 0; i < sack.length; i++) {
             System.out.print(sack[i]);
         }
-        System.out.println("");
+        System.out.println();
     }
 
-    protected void printArray(ArrayList<Integer> array){
+    protected void printArray(ArrayList<Integer> array) {
         System.out.print("Sorted sack in B: ");
         for (int i = 0; i < array.size(); i++) {
             System.out.print(array.get(i));
         }
-        System.out.println("");
+        System.out.println();
     }
 
     // This routine will be called whenever a packet sent from the B-side
     // (i.e. as a result of a toLayer3() being done by an A-side procedure)
     // arrives at the B-side.  "packet" is the (possibly corrupted) packet
     // sent from the A-side.
-    //上传的+1
+
     protected void bInput(Packet packet) {
         String msg = packet.getPayload();
         int p_seq = packet.getSeqnum();
         int checksum = msg.hashCode();
+        /**Check the corruption of packets*/
         if (packet.getChecksum() != checksum || p_seq < 0 || p_seq >= LimitSeqNo || packet.getAcknum() != -1 || packet.getsack() != null) {
             System.out.println("Checksum failed, packet from A is corrupted!");
             corruptPktNum += 1;
             return;
         }
         System.out.println("Packet received at B with seq number " + p_seq + ", payload: " + msg);
+
+        /**If the input packet's sequence number equals the wanted, it will be uploaded and the buffer_SACK will be checked
+         * for the subsequent packets to be uploaded together.*/
         if (p_seq == wanted_B) {
-            int end_window = (wanted_B + WindowSize-1) % LimitSeqNo;
+            int end_window = (wanted_B + WindowSize - 1) % LimitSeqNo;
             toLayer5(packet.getPayload());
             deliveredPktNum++;
             wanted_B = (wanted_B + 1) % LimitSeqNo;
+            /**Helper data structure to sort the buffer_SACK(since it is only decided by arrival)*/
             ArrayList<Integer> seq_number_sort = new ArrayList<>(buffer_SACK);
-            if (buffer_SACK.isEmpty()){
+            if (buffer_SACK.isEmpty()) {
                 for (int i = 0; i < 5; i++) {
                     SACK_B[i] = -1;
                 }
-                b_send_ACK(wanted_B,SACK_B);
+                b_send_ACK(wanted_B, SACK_B);
                 return;
-            }else{
-                if (end_window > wanted_B){
+            } else {
+                /**The case that the end_window is on the right hand of wanted_B. Just sort and plugin*/
+                if (end_window > wanted_B) {
                     seq_number_sort.sort(Comparator.naturalOrder());
                     printArray(seq_number_sort);
                     while (seq_number_sort.size() != 0) {
                         int seq = seq_number_sort.get(0);
-                        if (seq > wanted_B){
+                        if (seq > wanted_B) {
                             break;
-                        }else if (seq < wanted_B){
+                        } else if (seq < wanted_B) {  /**Delete the duplicate packets due to loss or timeout etc.*/
                             int result = seq_number_sort.remove(0);
-                            buffer_SACK.remove((Object)result);
+                            buffer_SACK.remove((Object) result);
                         } else {
                             toLayer5(seq_to_packet.get(seq).getPayload());
                             deliveredPktNum++;
-                            wanted_B = (wanted_B+1)%LimitSeqNo;
+                            wanted_B = (wanted_B + 1) % LimitSeqNo;
                             int result = seq_number_sort.remove(0);
-                            buffer_SACK.remove((Object)result);
+                            buffer_SACK.remove((Object) result);
                         }
 
                     }
-                }else {
+                } else {
+                    /**The case that the end_window is on the left hand of wanted_B. Require the sequence added with
+                     * LimitedSeqNo to show its behind order.*/
                     int temp_wanted = wanted_B;
                     for (int i = 0; i < seq_number_sort.size(); i++) {
-                        if(seq_number_sort.get(i) < end_window){
-                            seq_number_sort.set(i,seq_number_sort.get(i)+LimitSeqNo);
+                        if (seq_number_sort.get(i) < end_window) {
+                            seq_number_sort.set(i, seq_number_sort.get(i) + LimitSeqNo);
                         }
                     }
                     seq_number_sort.sort(Comparator.naturalOrder());
-                    printArray(seq_number_sort);
+//                    printArray(seq_number_sort);
                     while (seq_number_sort.size() != 0) {
                         int seq = seq_number_sort.get(0);
-                        if (seq > temp_wanted){
+                        if (seq > temp_wanted) {
                             break;
-                        }else if (seq < temp_wanted){
+                        } else if (seq < temp_wanted) {  /**Delete the duplicate packets due to loss or timeout etc.*/
                             int result = seq_number_sort.remove(0);
-                            buffer_SACK.remove((Object)(result%LimitSeqNo));
-                        }
-                        else{
-                            if (seq_to_packet.get(seq%LimitSeqNo) == null){
-                                for (int key:seq_to_packet.keySet()) {
-                                    System.out.print(key);
-                                    System.out.println(" and the value" + seq_to_packet.get(key));
-                                }
-                                System.out.println(seq%LimitSeqNo);
-                            }
-                            toLayer5(seq_to_packet.get(seq%LimitSeqNo).getPayload());
+                            buffer_SACK.remove((Object) (result % LimitSeqNo));
+                        } else {
+                            toLayer5(seq_to_packet.get(seq % LimitSeqNo).getPayload());
                             deliveredPktNum++;
-                            temp_wanted = temp_wanted+1;
+                            temp_wanted = temp_wanted + 1;
                             int result = seq_number_sort.remove(0);
-                            buffer_SACK.remove((Object)(result%LimitSeqNo));
+                            buffer_SACK.remove((Object) (result % LimitSeqNo));
                         }
 
                     }
-                    wanted_B = temp_wanted%LimitSeqNo;
+                    wanted_B = temp_wanted % LimitSeqNo;
 
                 }
             }
@@ -442,43 +449,39 @@ public class StudentNetworkSimulator extends NetworkSimulator {
             }
             b_send_ACK(wanted_B, SACK_B);
         } else {
-            /**If the p_seq is inside the window of B, add to sack and sort*/
+            /**If the p_seq is inside the window of B, add to sack*/
             int end_window = (wanted_B + WindowSize) % LimitSeqNo;
 
-            if (end_window > wanted_B) { /**Only have in-order between sequences.*/
+            if (end_window > wanted_B) { /**The right end, adding packet to buffers.*/
                 if (p_seq <= end_window && p_seq > wanted_B) {
-                    if (buffer_SACK.size()<5) {
+                    if (buffer_SACK.size() < 5) {
                         buffer_SACK.add(packet.getSeqnum());
-                        seq_to_packet.put(p_seq,packet);
-                        System.out.println(p_seq + " is added to buffer_B");
+                        seq_to_packet.put(p_seq, packet);
                     } else {
                         buffer_SACK.remove(0);
-                        buffer_SACK.add(buffer_SACK.size(),p_seq);
-                        System.out.println(p_seq + " is added to buffer_SACK");
-                        seq_to_packet.put(p_seq,packet);
+                        buffer_SACK.add(buffer_SACK.size(), p_seq);
+                        seq_to_packet.put(p_seq, packet);
                     }
                 }
             } else {
-                if (p_seq <= end_window || p_seq > wanted_B) {
-                    if (buffer_SACK.size()<5) {
+                if (p_seq <= end_window || p_seq > wanted_B) {/**The left end, adding packet to buffers.*/
+                    if (buffer_SACK.size() < 5) {
                         buffer_SACK.add(packet.getSeqnum());
-                        seq_to_packet.put(p_seq,packet);
-                        System.out.println(p_seq + " is added to buffer_B");
+                        seq_to_packet.put(p_seq, packet);
                     } else {
                         buffer_SACK.remove(0);
-                        buffer_SACK.add(buffer_SACK.size(),p_seq);
-                        System.out.println(p_seq + " is added to buffer_SACK");
-                        seq_to_packet.put(p_seq,packet);
+                        buffer_SACK.add(buffer_SACK.size(), p_seq);
+                        seq_to_packet.put(p_seq, packet);
 
                     }
 
                 }
             }
-            /**Reset SACK for adding one packet into it*/
+            /**Reset SACK for adding the buffer_SACK into it*/
             for (int i = 0; i < 5; i++) {
                 if (i < buffer_SACK.size()) {
                     SACK_B[i] = buffer_SACK.get(i);
-                }else {
+                } else {
                     SACK_B[i] = -1;
                 }
             }
@@ -528,8 +531,8 @@ public class StudentNetworkSimulator extends NetworkSimulator {
 
         // PRINT YOUR OWN STATISTIC HERE TO CHECK THE CORRECTNESS OF YOUR PROGRAM
         System.out.println("\nEXTRA:");
-        System.out.println("Throughput: " + ((double)originPktNum + (double)retransPktNum)/getTime());
-        System.out.println("Goodput: " + (double)originPktNum/getTime());
+        System.out.println("Throughput: " + ((double) originPktNum + (double) retransPktNum) * 20 / getTime());
+        System.out.println("Goodput: " + (double) originPktNum * 20 / getTime());
         // EXAMPLE GIVEN BELOW
         //System.out.println("Example statistic you want to check e.g. number of ACK packets received by A :" + "<YourVariableHere>");
     }
