@@ -389,7 +389,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                     int temp_wanted = wanted_B;
                     for (int i = 0; i < seq_number_sort.size(); i++) {
                         if(seq_number_sort.get(i) < end_window){
-                            seq_number_sort.set(i,seq_number_sort.get(i)+LimitSeqNo);
+                            seq_number_sort.set(i,seq_number_sort.get(i)+LimitSeqNo-1);
                         }
                     }
                     seq_number_sort.sort(Comparator.naturalOrder());
@@ -408,6 +408,13 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                             buffer_SACK.remove((Object)(result%LimitSeqNo));
                         }
                         else{
+                            if (seq_to_packet.get(seq) == null){
+                                for (int key:seq_to_packet.keySet()) {
+                                    System.out.print(key);
+                                    System.out.println(" and the value" + seq_to_packet.get(key));
+                                }
+                                System.out.println(seq);
+                            }
                             toLayer5(seq_to_packet.get(seq).getPayload());
                             deliveredPktNum++;
                             temp_wanted = temp_wanted+1;
@@ -452,14 +459,6 @@ public class StudentNetworkSimulator extends NetworkSimulator {
                         buffer_SACK.add(buffer_SACK.size(),p_seq);
                         System.out.println(p_seq + " is added to buffer_SACK");
                         seq_to_packet.put(p_seq,packet);
-                        /**This time remove one sack, also only remove one in map*/
-                        for (int seq : seq_to_packet.keySet()) {
-                            if (buffer_SACK.contains(seq)){
-                                continue;
-                            }
-                            seq_to_packet.remove(seq);
-                            break;
-                        }
                     }
                 }
             } else {
